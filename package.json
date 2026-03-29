@@ -1,0 +1,14 @@
+{
+  "name": "binance-strategy-tester",
+  "version": "1.0.0",
+  "description": "Strategy Backtest + Live Demo Tester",
+  "main": "backtest.js",
+  "scripts": {
+    "backtest": "node Backtest.js",
+    "live": "node live-demo.js",
+    "compare": "node compare-results.js"
+  },
+  "dependencies": {
+    "ccxt": "^4.5.45"
+  }
+}
