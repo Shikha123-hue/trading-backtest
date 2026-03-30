@@ -2,7 +2,7 @@
 /**
  * Backtest_15m.js
  * ✅ Lot Size     : 0.01 BTC fixed
- * ✅ Leverage     : 20x
+ * ✅ Leverage     : 10x
  * ✅ Candle Close : Entry at bar close only
  * ✅ Anti-Repaint : 1h MTF fully closed bars
  * ✅ Pine-Exact   : Wilder's RMA indicators
@@ -11,9 +11,9 @@ const ccxt = require('ccxt');
 
 // ─── CONFIG ───────────────────────────────────
 const LOT_SIZE = 0.01;   // 0.01 BTC base lot
-const LEVERAGE = 20;     // 20x leverage
-// Effective position = 0.01 × 20 = 0.2 BTC
-// At $70,000 → effective position = $14,000
+const LEVERAGE = 10;     // 10x leverage
+// Effective position = 0.01 × 10 = 0.1 BTC
+// At $70,000 → effective position = $7,000
 
 function calcRMAArray(data, period) {
     const result = new Array(data.length).fill(null);
@@ -219,7 +219,7 @@ async function runBacktest() {
     // Effective lot = LOT_SIZE * LEVERAGE
     const EFFECTIVE_LOT = LOT_SIZE * LEVERAGE; // 0.01 × 20 = 0.2 BTC
 
-    let balance=5000, position=null, entryPrice=0;
+    let balance=100, position=null, entryPrice=0;
     const tsm=new TrailingStopManager();
     const WARMUP=300;
 
@@ -289,6 +289,7 @@ async function runBacktest() {
         }
     }
 
+    
     // HELPERS
     const wr  = s => s.trades>0?((s.wins/s.trades)*100).toFixed(2):'0.00';
     const avg = s => s.trades>0?(s.totalPnl/s.trades).toFixed(2):'0.00';
@@ -298,7 +299,7 @@ async function runBacktest() {
     const globalWR=totalTrades>0?((totalWins/totalTrades)*100).toFixed(2):'0.00';
 
     console.log(`\n${'═'.repeat(60)}`);
-    console.log(`   BACKTEST — 0.01 BTC | 20x Leverage`);
+    console.log(`   BACKTEST — 0.01 BTC | 10x Leverage`);
     console.log(`${'═'.repeat(60)}`);
     console.log(`  Symbol        : ${symbol}`);
     console.log(`  Period        : Jan 2026 → Now`);
@@ -306,16 +307,16 @@ async function runBacktest() {
     console.log(`  Leverage      : ${LEVERAGE}x`);
     console.log(`  Effective Lot : ${EFFECTIVE_LOT} BTC (0.01 × 20)`);
     console.log(`  Position Val  : ~$${(70000*EFFECTIVE_LOT).toFixed(0)}-$${(95000*EFFECTIVE_LOT).toFixed(0)} per trade`);
-    console.log(`  Initial Cap   : $5,000.00`);
+    console.log(`  Initial Cap   : $100.00`);
     console.log(`  Final Balance : $${balance.toFixed(2)}`);
-    console.log(`  Net Profit    : $${(balance-5000).toFixed(2)}`);
-    console.log(`  Return %      : ${((balance-5000)/5000*100).toFixed(2)}%`);
+    console.log(`  Net Profit    : $${(balance-100).toFixed(2)}`);
+    console.log(`  Return %      : ${((balance-100)/100*100).toFixed(2)}%`);
     console.log(`  Total Trades  : ${totalTrades}`);
     console.log(`  Win Rate      : ${globalWR}%`);
     console.log(`${'═'.repeat(60)}`);
 
     const L=stats.long;
-    console.log(`\n  📈 BUY (LONG) — 0.2 BTC effective (20x)`);
+    console.log(`\n  📈 BUY (LONG) — 0.2 BTC effective (10x)`);
     console.log(`  ${'─'.repeat(48)}`);
     console.log(`  Trades        : ${L.trades}`);
     console.log(`  Wins          : ${L.wins}`);
@@ -327,7 +328,7 @@ async function runBacktest() {
     console.log(`  Worst Trade   : ${fix(L.maxLoss)}`);
 
     const S=stats.short;
-    console.log(`\n  📉 SELL (SHORT) — 0.2 BTC effective (20x)`);
+    console.log(`\n  📉 SELL (SHORT) — 0.2 BTC effective (10x)`);
     console.log(`  ${'─'.repeat(48)}`);
     console.log(`  Trades        : ${S.trades}`);
     console.log(`  Wins          : ${S.wins}`);

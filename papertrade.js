@@ -1,33 +1,33 @@
 "use strict";
 /**
  * PaperTrade.js — Fixed Version
- * ✅ Direct HTTPS API (no ccxt for auth)
- * ✅ ccxt sirf public OHLCV fetch ke liye
- * ✅ ATR-based trailing stop
- * ✅ $2 slippage
+ * ✅ Direct HTTPS — ccxt bypass (testnet fix)
+ * ✅ Binance Testnet | $10,000 capital | 0.01 BTC lot
+ * ✅ $2 slippage | 15m candle close entry
  */
 
 const https  = require('https');
 const crypto = require('crypto');
 const ccxt   = require('ccxt');
 
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
 //  🔑 APNI TESTNET KEYS YAHAN DALO
-// ══════════════════════════════════════════════
-const API_KEY    = '4fNPObXJmUm7skU0QZ3Mqr5qFqYIiuKvdqMtNGiqyVaywUxQDItIIYpuFzxeUzNQ';
-const API_SECRET = 'IKbbgT0mHGxiqfVMER0uhgwOQQHUVhS60MXfQOY6s9AudKLht76cD0YQYf4aaCC9';
-// ══════════════════════════════════════════════
+// ══════════════════════════════════════════
+const API_KEY    = 'NqBIUSvj1PVWJja7hsNAO9FsL4FMaeVi6kW1WJkOX46771Ly2pwFmGztxndXiDrH';
+const API_SECRET = 'BdXtTrK0iHPhzOnbLA7Mu4baneR5wAeYGlGXDMuWZT9trOjSBuQjihDkHKHGGtJG';
+// ══════════════════════════════════════════
 
-const LOT_SIZE = 0.01;
+const LOT_SIZE = 0.001;  // $100 ke liye 0.001 BTC (~$67-95)
 const SLIPPAGE = 2;
 const SYMBOL   = 'BTC/USDT';
-const INTERVAL = 15;
+const INTERVAL = 15; // minutes
 
-// ── Direct Signed API Call ────────────────────
+// ── Direct Binance Testnet API ────────────
 function sign(q) {
     return crypto.createHmac('sha256', API_SECRET).update(q).digest('hex');
 }
-function apiCall(method, path, params = {}) {
+
+function testnetCall(method, path, params = {}) {
     return new Promise((resolve, reject) => {
         const ts  = Date.now();
         const qs  = `timestamp=${ts}` +
@@ -37,14 +37,15 @@ function apiCall(method, path, params = {}) {
 
         const options = {
             hostname: 'testnet.binance.vision',
-            port: 443,
-            path: fullPath,
-            method: method,
+            port:     443,
+            path:     fullPath,
+            method:   method,
             headers: {
                 'X-MBX-APIKEY': API_KEY,
                 'Content-Type': 'application/json'
             }
         };
+
         const req = https.request(options, res => {
             let data = '';
             res.on('data', c => data += c);
@@ -58,80 +59,52 @@ function apiCall(method, path, params = {}) {
     });
 }
 
-// ── Place Order via Direct API ────────────────
-async function placeOrder(side, qty) {
-    try {
-        const params = {
-            symbol:   'BTCUSDT',
-            side:     side.toUpperCase(),
-            type:     'MARKET',
-            quantity: qty.toFixed(3)
+// Place market order via direct API
+function testnetOrderCall(side, qty) {
+    return new Promise((resolve, reject) => {
+        const ts     = Date.now();
+        const params = `symbol=BTCUSDT&side=${side}&type=MARKET&quantity=${qty}&timestamp=${ts}`;
+        const sig    = sign(params);
+        const body   = `${params}&signature=${sig}`;
+
+        const options = {
+            hostname: 'testnet.binance.vision',
+            port:     443,
+            path:     '/api/v3/order',
+            method:   'POST',
+            headers: {
+                'X-MBX-APIKEY':  API_KEY,
+                'Content-Type':  'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(body)
+            }
         };
-        const ts  = Date.now();
-        const qs  = `timestamp=${ts}&` + new URLSearchParams(params).toString();
-        const sig = sign(qs);
 
-        const result = await new Promise((resolve, reject) => {
-            const body = `${qs}&signature=${sig}`;
-            const options = {
-                hostname: 'testnet.binance.vision',
-                port: 443,
-                path: '/api/v3/order',
-                method: 'POST',
-                headers: {
-                    'X-MBX-APIKEY': API_KEY,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': Buffer.byteLength(body)
-                }
-            };
-            const req = https.request(options, res => {
-                let data = '';
-                res.on('data', c => data += c);
-                res.on('end', () => {
-                    try { resolve(JSON.parse(data)); }
-                    catch (e) { reject(new Error(data)); }
-                });
+        const req = https.request(options, res => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                try { resolve(JSON.parse(data)); }
+                catch (e) { reject(new Error('Parse error: ' + data)); }
             });
-            req.on('error', reject);
-            req.write(body);
-            req.end();
         });
-
-        if (result.code) {
-            console.log(`  ❌ Order failed: ${result.msg}`);
-            return null;
-        }
-        console.log(`  ✅ ORDER PLACED → ${side.toUpperCase()} ${qty} BTC`);
-        console.log(`     Order ID : ${result.orderId}`);
-        console.log(`     Status   : ${result.status}`);
-        return result;
-    } catch (err) {
-        console.error(`  ❌ Order error: ${err.message}`);
-        return null;
-    }
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
 }
 
-// ── Check Balance via Direct API ──────────────
-async function checkBalance() {
-    try {
-        const account = await apiCall('GET', 'account');
-        if (account.code) {
-            console.log(`  ❌ Balance error: ${account.msg}`);
-            return null;
-        }
-        const usdt = account.balances.find(b => b.asset === 'USDT');
-        const btc  = account.balances.find(b => b.asset === 'BTC');
-        const usdtFree = parseFloat(usdt?.free || 0);
-        const btcFree  = parseFloat(btc?.free  || 0);
-        console.log(`  💰 Balance → USDT: $${usdtFree.toFixed(2)} | BTC: ${btcFree.toFixed(4)}`);
-        return { usdt: usdtFree, btc: btcFree };
-    } catch (err) {
-        console.error(`  ❌ Balance fetch error: ${err.message}`);
-        return null;
-    }
+// ── Indicator Functions ───────────────────
+function calcRMA(data, period) {
+    const result = new Array(data.length).fill(null);
+    if (data.length < period) return result;
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += data[i];
+    result[period - 1] = sum / period;
+    const alpha = 1 / period;
+    for (let i = period; i < data.length; i++)
+        result[i] = alpha * data[i] + (1 - alpha) * result[i - 1];
+    return result;
 }
-
-// ── Indicators ────────────────────────────────
 function calcEMA(data, period) {
     const result = new Array(data.length).fill(null);
     if (data.length < period) return result;
@@ -149,16 +122,6 @@ function calcSMA(data, period) {
         if (i < period - 1) return null;
         return data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
     });
-}
-function calcRMA(data, period) {
-    const result = new Array(data.length).fill(null);
-    let sum = 0;
-    for (let i = 0; i < period; i++) sum += data[i];
-    result[period - 1] = sum / period;
-    const alpha = 1 / period;
-    for (let i = period; i < data.length; i++)
-        result[i] = alpha * data[i] + (1 - alpha) * result[i - 1];
-    return result;
 }
 function calcATR(h, l, c, period) {
     const trs = new Array(h.length).fill(null);
@@ -242,35 +205,26 @@ function calcVWAP(ohlcv) {
     return vwap;
 }
 
-// ── ATR-Based Trailing Stop ───────────────────
-class TrailingStopManager {
+// ── Trailing Stop ─────────────────────────
+class TSM {
     constructor() { this.reset(); }
-    reset() {
-        this.active=false; this.side=null; this.entryPrice=0;
-        this.currentSL=0; this.trailActive=false;
-        this.peakPrice=0; this.atr=0;
-    }
-    open(side, entryPrice, atr) {
+    reset() { this.active=false;this.side=null;this.entryPrice=0;this.currentSL=0;this.trailActive=false;this.peakPrice=0;this.atr=0; }
+    open(side, ep, atr) {
         this.reset(); this.active=true; this.side=side;
-        this.entryPrice=entryPrice; this.peakPrice=entryPrice;
-        this.atr=atr;
-        this.currentSL = side==='long' ? entryPrice-atr*1.5 : entryPrice+atr*1.5;
+        this.entryPrice=ep; this.peakPrice=ep; this.atr=atr;
+        this.currentSL = side==='long' ? ep-atr*1.5 : ep+atr*1.5;
     }
     update(high, low) {
-        if (!this.active) return { stopped:false };
-        const isBuy = this.side==='long';
+        if (!this.active) return { stopped: false };
+        const isBuy = this.side === 'long';
         if (isBuy  && high > this.peakPrice) this.peakPrice = high;
         if (!isBuy && low  < this.peakPrice) this.peakPrice = low;
-        const move = isBuy
-            ? this.peakPrice - this.entryPrice
-            : this.entryPrice - this.peakPrice;
+        const move = isBuy ? this.peakPrice-this.entryPrice : this.entryPrice-this.peakPrice;
         if (move >= this.atr * 1.0) this.trailActive = true;
         if (this.trailActive) {
-            const newSL = isBuy
-                ? this.peakPrice - this.atr * 1.0
-                : this.peakPrice + this.atr * 1.0;
-            if (isBuy  && newSL > this.currentSL) this.currentSL = newSL;
-            if (!isBuy && newSL < this.currentSL) this.currentSL = newSL;
+            const nsl = isBuy ? this.peakPrice-this.atr : this.peakPrice+this.atr;
+            if (isBuy  && nsl > this.currentSL) this.currentSL = nsl;
+            if (!isBuy && nsl < this.currentSL) this.currentSL = nsl;
         }
         const stopped = isBuy ? low <= this.currentSL : high >= this.currentSL;
         return { stopped, exitPrice: this.currentSL };
@@ -278,33 +232,65 @@ class TrailingStopManager {
     close() { this.reset(); }
 }
 
-// ── State ─────────────────────────────────────
+// ── State ─────────────────────────────────
 let position   = null;
 let fillEntry  = 0;
-let balance    = 10000;
-const startBal = 10000;
-const tsm      = new TrailingStopManager();
-const tradeLog = [];
+let entryPrice = 0;
+const tsm      = new TSM();
+let balance    = 100;
+const startBal = 100;
+let tradeLog   = [];
+let tickCount  = 0;
 
-// ── Public exchange (no auth needed) ─────────
-const exchange = new ccxt.binance();
+// ── Public exchange for OHLCV only ────────
+const publicEx = new ccxt.binance();
 
-// ── Main Tick ─────────────────────────────────
-async function tick(tickCount) {
+// ── Check Balance ─────────────────────────
+async function checkBalance() {
+    const data = await testnetCall('GET', 'account');
+    if (data.code) {
+        console.log(`  ❌ Balance error ${data.code}: ${data.msg}`);
+        return null;
+    }
+    const usdt = parseFloat(data.balances.find(b => b.asset==='USDT')?.free || 0);
+    const btc  = parseFloat(data.balances.find(b => b.asset==='BTC')?.free  || 0);
+    console.log(`  💰 Testnet Balance → USDT: $${usdt.toFixed(2)} | BTC: ${btc.toFixed(4)}`);
+    return { usdt, btc };
+}
+
+// ── Place Order ───────────────────────────
+async function placeOrder(side, qty) {
+    try {
+        const order = await testnetOrderCall(side.toUpperCase(), qty);
+        if (order.code) {
+            console.log(`  ❌ Order failed ${order.code}: ${order.msg}`);
+            return null;
+        }
+        console.log(`  ✅ ORDER PLACED → ${side.toUpperCase()} ${qty} BTC`);
+        console.log(`     Order ID : ${order.orderId}`);
+        console.log(`     Status   : ${order.status}`);
+        return order;
+    } catch (err) {
+        console.error(`  ❌ Order error: ${err.message}`);
+        return null;
+    }
+}
+
+// ── Main Tick ─────────────────────────────
+async function tick() {
+    tickCount++;
     const now = new Date().toISOString();
     console.log(`\n${'─'.repeat(62)}`);
     console.log(`  ⏱️  Tick #${tickCount} | ${now}`);
 
     try {
-        // Fetch last 300 closed candles (public — no auth)
-        const ohlcv = await exchange.fetchOHLCV(SYMBOL, '15m', undefined, 300);
+        // Fetch 300 closed 15m candles (public — no auth needed)
+        const ohlcv = await publicEx.fetchOHLCV(SYMBOL, '15m', undefined, 300);
         const bars  = ohlcv.slice(0, -1); // remove unclosed candle
         const n     = bars.length;
 
-        const H = bars.map(d=>d[2]);
-        const L = bars.map(d=>d[3]);
-        const C = bars.map(d=>d[4]);
-        const V = bars.map(d=>d[5]);
+        const H = bars.map(d=>d[2]), L = bars.map(d=>d[3]);
+        const C = bars.map(d=>d[4]), V = bars.map(d=>d[5]);
 
         const ema200 = calcEMA(C, 200);
         const rsi    = calcRSI(C, 14);
@@ -314,7 +300,7 @@ async function tick(tickCount) {
         const vwap   = calcVWAP(bars);
         const stDir  = calcSuperTrend(H, L, C, 4, 12);
 
-        const i = n - 1;
+        const i       = n - 1; // latest closed bar
         const price   = C[i];
         const curEma  = ema200[i], curRsi = rsi[i];
         const curAdx  = adx[i],   prevAdx = adx[i-1];
@@ -323,10 +309,11 @@ async function tick(tickCount) {
 
         console.log(`  📈 Price  : $${price.toFixed(2)}`);
         console.log(`  EMA200: ${curEma?.toFixed(2)} | RSI: ${curRsi?.toFixed(2)} | ADX: ${curAdx?.toFixed(2)} | ATR: ${curAtr?.toFixed(2)}`);
-        console.log(`  VWAP  : ${curVwap?.toFixed(2)} | ST Dir: ${dir15} | Position: ${position || 'NONE'}`);
+        console.log(`  VWAP : ${curVwap?.toFixed(2)} | ST Dir: ${dir15} | Vol>${curVSma?.toFixed(0)}: ${V[i]>curVSma*1.2?'✅':'❌'}`);
+        console.log(`  Position: ${position || 'NONE'}`);
 
         if (!curEma||!curRsi||!curAdx||!prevAdx||!curAtr||!curVSma||!curVwap||dir15===null) {
-            console.log('  ⚠️  Indicators not ready, waiting...');
+            console.log('  ⚠️  Indicators warming up...');
             return;
         }
 
@@ -340,14 +327,16 @@ async function tick(tickCount) {
                 const pnl = position === 'long'
                     ? (fillExit - fillEntry) * LOT_SIZE
                     : (fillEntry - fillExit) * LOT_SIZE;
+
                 balance += pnl;
 
-                const closeSide = position === 'long' ? 'sell' : 'buy';
-                console.log(`\n  🔴 EXIT ${position.toUpperCase()}`);
-                console.log(`     Entry : $${fillEntry.toFixed(2)} | Exit: $${fillExit.toFixed(2)}`);
+                console.log(`\n  🔴 EXIT ${position.toUpperCase()} — SL Hit`);
+                console.log(`     Entry : $${fillEntry.toFixed(2)}`);
+                console.log(`     Exit  : $${fillExit.toFixed(2)}`);
                 console.log(`     PnL   : $${pnl.toFixed(2)} ${pnl > 0 ? '✅ WIN' : '❌ LOSS'}`);
                 console.log(`     Balance: $${balance.toFixed(2)}`);
 
+                const closeSide = position === 'long' ? 'SELL' : 'BUY';
                 await placeOrder(closeSide, LOT_SIZE);
 
                 tradeLog.push({
@@ -359,10 +348,10 @@ async function tick(tickCount) {
                     result:  pnl > 0 ? 'WIN' : 'LOSS',
                     balance: balance.toFixed(2)
                 });
-                position = null; tsm.close();
 
+                position = null; tsm.close();
             } else {
-                console.log(`  🔒 Holding ${position.toUpperCase()} | SL: $${tsm.currentSL.toFixed(2)} | Trail: ${tsm.trailActive ? '✅ Active' : '⏳ Waiting'}`);
+                console.log(`  🔒 Holding ${position.toUpperCase()} | SL: $${tsm.currentSL.toFixed(2)} | Peak: $${tsm.peakPrice.toFixed(2)}`);
             }
         }
 
@@ -383,77 +372,76 @@ async function tick(tickCount) {
                 V[i] > curVSma * 1.2;
 
             if (buySignal) {
-                fillEntry = price + SLIPPAGE;
-                position  = 'long';
+                entryPrice = price;
+                fillEntry  = price + SLIPPAGE;
+                position   = 'long';
                 tsm.open('long', fillEntry, curAtr);
+
                 console.log(`\n  🟢 BUY SIGNAL!`);
                 console.log(`     Entry : $${fillEntry.toFixed(2)} (+$${SLIPPAGE} slippage)`);
-                console.log(`     SL    : $${tsm.currentSL.toFixed(2)} (1.5x ATR = $${(curAtr*1.5).toFixed(2)})`);
-                console.log(`     PosVal: $${(fillEntry * LOT_SIZE).toFixed(2)}`);
-                await placeOrder('buy', LOT_SIZE);
+                console.log(`     SL    : $${tsm.currentSL.toFixed(2)}`);
+                console.log(`     PosVal: $${(fillEntry*LOT_SIZE).toFixed(2)}`);
+                await placeOrder('BUY', LOT_SIZE);
 
             } else if (sellSignal) {
-                fillEntry = price - SLIPPAGE;
-                position  = 'short';
+                entryPrice = price;
+                fillEntry  = price - SLIPPAGE;
+                position   = 'short';
                 tsm.open('short', fillEntry, curAtr);
+
                 console.log(`\n  🔴 SELL SIGNAL!`);
                 console.log(`     Entry : $${fillEntry.toFixed(2)} (-$${SLIPPAGE} slippage)`);
-                console.log(`     SL    : $${tsm.currentSL.toFixed(2)} (1.5x ATR = $${(curAtr*1.5).toFixed(2)})`);
-                console.log(`     PosVal: $${(fillEntry * LOT_SIZE).toFixed(2)}`);
-                await placeOrder('sell', LOT_SIZE);
+                console.log(`     SL    : $${tsm.currentSL.toFixed(2)}`);
+                console.log(`     PosVal: $${(fillEntry*LOT_SIZE).toFixed(2)}`);
+                await placeOrder('SELL', LOT_SIZE);
 
             } else {
                 // Show why no signal
                 console.log(`  ⏳ No signal | Conditions:`);
-                console.log(`     ST=${dir15} RSI=${curRsi?.toFixed(1)} ADX=${curAdx?.toFixed(1)} Vol>${curVSma?.toFixed(1)}? ${V[i]>curVSma*1.2?'✅':'❌'}`);
+                console.log(`     ST=${dir15} RSI=${curRsi?.toFixed(1)} ADX=${curAdx?.toFixed(1)} Price${price>curVwap?'>':'<'}VWAP Price${price>curEma?'>':'<'}EMA`);
             }
         }
 
         // ── P&L Summary ───────────────────────────
         const net = balance - startBal;
-        console.log(`\n  📊 Trades:${tradeLog.length} | Balance:$${balance.toFixed(2)} | P&L:$${net.toFixed(2)} (${(net/startBal*100).toFixed(2)}%)`);
+        const wins = tradeLog.filter(t=>t.result==='WIN').length;
+        console.log(`\n  📊 P&L → Trades:${tradeLog.length} | Wins:${wins} | Balance:$${balance.toFixed(2)} | Net:$${net.toFixed(2)}`);
 
     } catch (err) {
         console.error(`  ❌ Tick error: ${err.message}`);
     }
 }
 
-// ── Run Loop ──────────────────────────────────
-async function run() {
+// ── Scheduler ────────────────────────────
+async function waitAndRun() {
+    const now   = Date.now();
+    const ms15  = INTERVAL * 60 * 1000;
+    const next  = Math.ceil(now / ms15) * ms15 + 5000; // 5s after candle close
+    const wait  = next - now;
+    const mins  = Math.floor(wait / 60000);
+    const secs  = Math.floor((wait % 60000) / 1000);
+    console.log(`\n  ⏰ Next candle close in: ${mins}m ${secs}s`);
+    setTimeout(async () => { await tick(); waitAndRun(); }, wait);
+}
+
+// ── Start ─────────────────────────────────
+async function main() {
     console.log('═'.repeat(62));
-    console.log('  🚀 PAPER TRADE BOT — Binance Testnet');
-    console.log('  Symbol   : BTC/USDT | Lot: 0.01 BTC | Cap: $10,000');
-    console.log('  Slippage : $2/side | Trailing Stop: ATR-based');
+    console.log('  🚀 PAPER TRADE BOT — Binance Testnet (Fixed)');
+    console.log('  Symbol   : BTC/USDT | Lot: 0.001 BTC | Cap: $100');
+    console.log('  Slippage : $2/side | Direct API (no ccxt auth)');
     console.log('═'.repeat(62));
 
     if (API_KEY === 'APNI_TESTNET_API_KEY') {
-        console.log('\n❌ API Keys nahi daali! PaperTrade.js me apni keys dalo.\n');
+        console.log('\n❌ Keys nahi daali! PaperTrade.js me apni keys dalo.\n');
         return;
     }
 
     console.log('\n📊 Checking Testnet Account...');
     await checkBalance();
 
-    let tickCount = 0;
-
-    async function waitAndRun() {
-        const now    = Date.now();
-        const ms15   = INTERVAL * 60 * 1000;
-        const next   = Math.ceil(now / ms15) * ms15 + 5000;
-        const wait   = next - now;
-        const mins   = Math.floor(wait / 60000);
-        const secs   = Math.floor((wait % 60000) / 1000);
-        console.log(`\n  ⏰ Next candle close in: ${mins}m ${secs}s`);
-        setTimeout(async () => {
-            tickCount++;
-            await tick(tickCount);
-            waitAndRun();
-        }, wait);
-    }
-
-    tickCount++;
-    await tick(tickCount);
+    await tick();
     waitAndRun();
 }
 
-run().catch(console.error);
+main().catch(console.error);

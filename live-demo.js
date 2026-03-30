@@ -19,8 +19,8 @@ const path = require("path");
 const { strategy, TrailingStopManager } = require("./strategy");
 
 // ─── APNI API KEYS YAHAN DAALO ────────────────────────────
-const API_KEY    = "HQNnLnTG5CKla0UU7VKh93LoUfJnp1CZQb4r30OQS3LllZP9BECc1m1V20Ay2zu4";
-const API_SECRET = "VoPpLyL0wkRUey2lx4KmHVBXQFhsS30PNUZzAnGKJ4umEWNjvgVa9SqeLf7eitKg";
+const API_KEY    = "NqBIUSvj1PVWJja7hsNAO9FsL4FMaeVi6kW1WJkOX46771Ly2pwFmGztxndXiDrH";
+const API_SECRET = "BdXtTrK0iHPhzOnbLA7Mu4baneR5wAeYGlGXDMuWZT9trOjSBuQjihDkHKHGGtJG";
 // ─────────────────────────────────────────────────────────
 
 // ─── Config ───────────────────────────────────────────────
