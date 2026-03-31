@@ -12,8 +12,8 @@ const ccxt = require('ccxt');
 // ─── CONFIG ───────────────────────────────────
 const LOT_SIZE = 0.01;   // 0.01 BTC base lot
 const LEVERAGE = 10;     // 10x leverage
-// Effective position = 0.01 × 10 = 0.1 BTC
-// At $70,000 → effective position = $7,000
+// Effective position = 0.01 × 20 = 0.2 BTC
+// At $70,000 → effective position = $14,000
 
 function calcRMAArray(data, period) {
     const result = new Array(data.length).fill(null);
@@ -219,7 +219,7 @@ async function runBacktest() {
     // Effective lot = LOT_SIZE * LEVERAGE
     const EFFECTIVE_LOT = LOT_SIZE * LEVERAGE; // 0.01 × 20 = 0.2 BTC
 
-    let balance=100, position=null, entryPrice=0;
+    let balance=500, position=null, entryPrice=0;
     const tsm=new TrailingStopManager();
     const WARMUP=300;
 
@@ -229,7 +229,7 @@ async function runBacktest() {
         if (position) {
             const { stopped, exitPrice } = tsm.update(h15[i],l15[i]);
             if (stopped) {
-                // PnL with 20x leverage
+                // PnL with 10x leverage
                 const pnl = position==='long'
                     ? (exitPrice - entryPrice) * EFFECTIVE_LOT
                     : (entryPrice - exitPrice) * EFFECTIVE_LOT;
@@ -289,7 +289,6 @@ async function runBacktest() {
         }
     }
 
-    
     // HELPERS
     const wr  = s => s.trades>0?((s.wins/s.trades)*100).toFixed(2):'0.00';
     const avg = s => s.trades>0?(s.totalPnl/s.trades).toFixed(2):'0.00';
@@ -305,12 +304,12 @@ async function runBacktest() {
     console.log(`  Period        : Jan 2026 → Now`);
     console.log(`  Lot Size      : ${LOT_SIZE} BTC (base)`);
     console.log(`  Leverage      : ${LEVERAGE}x`);
-    console.log(`  Effective Lot : ${EFFECTIVE_LOT} BTC (0.01 × 20)`);
+    console.log(`  Effective Lot : ${EFFECTIVE_LOT} BTC (0.01 × 10)`);
     console.log(`  Position Val  : ~$${(70000*EFFECTIVE_LOT).toFixed(0)}-$${(95000*EFFECTIVE_LOT).toFixed(0)} per trade`);
-    console.log(`  Initial Cap   : $100.00`);
+    console.log(`  Initial Cap   : $500.00`);
     console.log(`  Final Balance : $${balance.toFixed(2)}`);
-    console.log(`  Net Profit    : $${(balance-100).toFixed(2)}`);
-    console.log(`  Return %      : ${((balance-100)/100*100).toFixed(2)}%`);
+    console.log(`  Net Profit    : $${(balance-500).toFixed(2)}`);
+    console.log(`  Return %      : ${((balance-500)/500*100).toFixed(2)}%`);
     console.log(`  Total Trades  : ${totalTrades}`);
     console.log(`  Win Rate      : ${globalWR}%`);
     console.log(`${'═'.repeat(60)}`);
