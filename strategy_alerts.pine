@@ -1,0 +1,77 @@
+//@version=5
+strategy("65 Ultra-Sniper MTF - Fully Fixed", 
+     overlay=true, 
+     initial_capital=5000, 
+     default_qty_type=strategy.cash, 
+     default_qty_value=5000,
+     calc_on_every_tick=false,
+     slippage=2)
+
+// --- MTF Safety Function (Anti-Repaint & No-Leak) ---
+f_safe_mtf(_htf, _src) => 
+    request.security(syminfo.tickerid, _htf, _src[1], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+// --- Indicators (5-Min Current Chart) ---
+[st_val, st_dir] = ta.supertrend(4, 12)
+vwap_val = ta.vwap(close)
+rsi_val = ta.rsi(close, 14)
+[p, m, adx_val] = ta.dmi(14, 14)
+ema_200 = ta.ema(close, 200)
+
+// --- MTF Data (15-Min) ---
+st_15min_dir = f_safe_mtf("15", st_dir)
+
+// --- Strength & Volatility ---
+atr = ta.atr(14)
+adx_rising = adx_val > 32 and adx_val > adx_val[1]
+high_vol = volume > ta.sma(volume, 20) * 1.2
+
+// --- Entry Logic ---
+buy_signal = (close > st_val) and (st_15min_dir < 0) and (close > vwap_val) and (close > ema_200) and 
+             (rsi_val > 58 and rsi_val < 72) and adx_rising and high_vol
+
+sell_signal = (close < st_val) and (st_15min_dir > 0) and (close < vwap_val) and (close < ema_200) and 
+              (rsi_val > 28 and rsi_val < 42) and adx_rising and high_vol
+
+// --- Plotting Labels ---
+plotshape(buy_signal, title="Buy Tag", text="BUY", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, size=size.small)
+plotshape(sell_signal, title="Sell Tag", text="SELL", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, size=size.small)
+
+// --- Smart Execution ---
+if (strategy.position_size == 0)
+    if (buy_signal)
+        strategy.entry("Long Sniper", strategy.long)
+    if (sell_signal)
+        strategy.entry("Short Sniper", strategy.short)
+
+// --- Trailing Stop Loss ---
+sl_ticks          = (atr * 1.5) / syminfo.mintick
+trail_points_ticks = 2.0 / syminfo.mintick
+trail_offset_ticks = 0.5 / syminfo.mintick
+
+strategy.exit("Exit Sniper", 
+     loss          = sl_ticks, 
+     trail_points  = trail_points_ticks, 
+     trail_offset  = trail_offset_ticks)
+
+// --- Visuals ---
+plot(ema_200,  color=color.new(color.yellow, 0), title="EMA 200", linewidth=2)
+plot(vwap_val, color=color.new(color.blue,   0), title="VWAP",    linewidth=1)
+
+// ══════════════════════════════════════════════
+//  WEBHOOK ALERTS — Bot ko signal bhejte hain
+// ══════════════════════════════════════════════
+var string SECRET = "sniper65secret"
+
+buy_msg  = '{"secret":"' + SECRET + '","action":"buy","price":'      + str.tostring(close) + ',"atr":' + str.tostring(atr) + '}'
+sell_msg = '{"secret":"' + SECRET + '","action":"sell","price":'     + str.tostring(close) + ',"atr":' + str.tostring(atr) + '}'
+sl_msg   = '{"secret":"' + SECRET + '","action":"check_sl","price":' + str.tostring(close) + ',"atr":' + str.tostring(atr) + '}'
+
+if buy_signal
+    alert(buy_msg, alert.freq_once_per_bar_close)
+
+if sell_signal
+    alert(sell_msg, alert.freq_once_per_bar_close)
+
+if strategy.position_size != 0
+    alert(sl_msg, alert.freq_once_per_bar_close)
