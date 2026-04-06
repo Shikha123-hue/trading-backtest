@@ -9,8 +9,8 @@ const crypto = require('crypto');
 // ══════════════════════════════════════════
 //  🔑 APNI KEYS YAHAN DALO
 // ══════════════════════════════════════════
-const API_KEY    ='4fNPObXJmUm7skU0QZ3Mqr5qFqYIiuKvdqMtNGiqyVaywUxQDItIIYpuFzxeUzNQ';
-const API_SECRET = 'IKbbgT0mHGxiqfVMER0uhgwOQQHUVhS60MXfQOY6s9AudKLht76cD0YQYf4aaCC9';
+const API_KEY    ='NqBIUSvj1PVWJja7hsNAO9FsL4FMaeVi6kW1WJkOX46771Ly2pwFmGztxndXiDrH';
+const API_SECRET = 'BdXtTrK0iHPhzOnbLA7Mu4baneR5wAeYGlGXDMuWZT9trOjSBuQjihDkHKHGGtJG';
 // ══════════════════════════════════════════
 
 function sign(queryString) {
