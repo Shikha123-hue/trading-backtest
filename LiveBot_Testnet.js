@@ -19,8 +19,8 @@ const ccxt = require('ccxt');
 // ─────────────────────────────────────────────
 //  🔑 APNI TESTNET API KEYS YAHAN DAALO
 // ─────────────────────────────────────────────
-const API_KEY    = 't60JxHasKcLXv82wovamnZLlXF3reqUFLbHVzAgMalLtK0lHHScPSXnuHOJ4zklU';
-const API_SECRET = 'A6GtQSsOEtm2JyneWLA3QEHDHRycihOYwdufUhiuXxXkKOf1XdiRwxxprt8hg5lB';
+const API_KEY    = '8tVAt8tQ3H3mSzn7tMMoZ1kYjQ3mY1qmPdphuG2pZYSRzkUXiVWKJpXy5N42fljW';
+const API_SECRET = 'uJJ3RHsMMv5DnJVjtQQ8TQpP56D7B5abuS75igrFFjdUegPBuu4lvrT5ciw0MS69';
 
 // ─────────────────────────────────────────────
 //  CONFIG
