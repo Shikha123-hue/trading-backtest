@@ -205,7 +205,7 @@ async function runBacktest() {
         const curTime=t15[i];
         let stDir1h=null;
         for (let j=t1h.length-1;j>=0;j--) {
-            if (t1h[j]+3600000<=curTime) { stDir1h=dir1h[j]; break; }
+            if (t1h[j] <=curTime) { stDir1h=dir1h[j]; break; }
         }
         mtf1hMap.set(curTime,stDir1h);
     }

@@ -295,7 +295,7 @@ function calcSuperTrend(candles, factor, atrPeriod) {
 // ═══════════════════════════════════════════════
 //  MAIN STRATEGY — Pine Script Line-by-Line
 // ═══════════════════════════════════════════════
-function strategy(candles5m, candles15m) {
+function strategy(candles5m, candles15m, candles1h) {
   // Need 600+ bars for EMA(200) to fully converge
   if (candles5m.length  < 600) return null;
   if (candles15m.length < 50)  return null;
@@ -311,12 +311,13 @@ function strategy(candles5m, candles15m) {
   const vwap_val = calcVWAP(candles5m);
 
   // Pine: rsi_val = ta.rsi(close, 14)
-  const rsi_val = calcRSI(closes, 14);
+  const closes15m = candles15m.map(c => c.close);
+  const rsi_val = calcRSI(closes15m, 14);
 
   // Pine: [p, m, adx_val] = ta.dmi(14, 14)
-  const { adx: adx_val  } = calcDMI(candles5m, 14);
+  const { adx: adx_val  } = calcDMI(candles15m, 14);
   // Pine: adx_val[1]  →  previous bar DMI
-  const { adx: adx_prev } = calcDMI_prev(candles5m, 14);
+  const { adx: adx_prev } = calcDMI_prev(candles15m, 14);
 
   // Pine: ema_200 = ta.ema(close, 200)
   const ema_200 = calcEMA(closes, 200);
@@ -324,30 +325,31 @@ function strategy(candles5m, candles15m) {
   // Pine: atr = ta.atr(14)
   const atr = calcATR(candles5m, 14);
 
-  // Pine: st_15min_dir = f_safe_mtf("15", st_dir)
+  // Pine: st_1h_dir = f_safe_mtf("15", st_dir)
   // f_safe_mtf uses _src[1] → previous 15m bar's direction
-  const { direction: st_15min_dir } = calcSuperTrend(
-    candles15m.slice(0, -1), 4, 12   // [1] = exclude current forming bar
+  const { direction: st_1h_dir } = calcSuperTrend(
+    candles1h.slice(0, -1), 4, 12
   );
 
-  // Pine: adx_rising = adx_val > 32 and adx_val > adx_val[1]
+  // Pine: adx_rising = adx_val > 25 and adx_val > adx_val[1]
   const adx_rising = adx_val  !== null &&
                      adx_prev !== null &&
-                     adx_val > 32 &&
+                     adx_val > 25 &&
                      adx_val > adx_prev;
 
   // Pine: high_vol = volume > ta.sma(volume, 20) * 1.2
-  const vol_sma  = calcSMA(vols, 20);
-  const curVol   = candles5m[candles5m.length - 1].volume;
+  const vols15m = candles15m.map(c => c.volume);
+  const vol_sma  = calcSMA(vols15m, 20);
+  const curVol   = candles15m[candles15m.length - 1].volume;
   const high_vol = vol_sma !== null && curVol > vol_sma * 1.2;
 
   if (!atr || !rsi_val || !ema_200 || !vwap_val ||
-      st_dir === null || st_15min_dir === null) return null;
+      st_dir === null || st_1h_dir === null) return null;
 
   // Pine: buy_signal
   const buy_signal =
     st_dir       === -1 &&   // close > st_val  (direction=-1 = bullish)
-    st_15min_dir === -1 &&   // st_15min_dir < 0
+    st_1h_dir === -1 &&   // st_1h_dir < 0
     close > vwap_val    &&
     close > ema_200     &&
     rsi_val > 58        &&
@@ -358,7 +360,7 @@ function strategy(candles5m, candles15m) {
   // Pine: sell_signal
   const sell_signal =
     st_dir       === 1  &&   // close < st_val  (direction=1 = bearish)
-    st_15min_dir === 1  &&   // st_15min_dir > 0
+    st_1h_dir === 1  &&   // st_1h_dir > 0
     close < vwap_val    &&
     close < ema_200     &&
     rsi_val > 28        &&

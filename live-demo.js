@@ -19,14 +19,14 @@ const path = require("path");
 const { strategy, TrailingStopManager } = require("./strategy");
 
 // ─── APNI API KEYS YAHAN DAALO ────────────────────────────
-const API_KEY    = "t60JxHasKcLXv82wovamnZLlXF3reqUFLbHVzAgMalLtK0lHHScPSXnuHOJ4zklU";
-const API_SECRET = "A6GtQSsOEtm2JyneWLA3QEHDHRycihOYwdufUhiuXxXkKOf1XdiRwxxprt8hg5lB";
+const API_KEY    = '8tVAt8tQ3H3mSzn7tMMoZ1kYjQ3mY1qmPdphuG2pZYSRzkUXiVWKJpXy5N42fljW';
+const API_SECRET = 'uJJ3RHsMMv5DnJVjtQQ8TQpP56D7B5abuS75igrFFjdUegPBuu4lvrT5ciw0MS69';
 // ─────────────────────────────────────────────────────────
 
 // ─── Config ───────────────────────────────────────────────
 const SYMBOL     = "BTCUSDT";
-const QUANTITY   = "0.001";   // Demo mein small quantity se test karo
-const LEVERAGE   = 20;
+const QUANTITY   = "0.01";   // Demo mein small quantity se test karo
+const LEVERAGE   = 10;
 // Demo Binance URL (Real nahi!)
 const BASE_URL   = "testnet.binancefuture.com";
 const SIGNAL_ONLY_ON_AUTH_ERROR = true;
@@ -36,6 +36,7 @@ const tsm = new TrailingStopManager();
 let openTrade = null;
 let candles5m_cache  = [];
 let candles15m_cache = [];
+let candles1h_cache  = [];
 let tradingEnabled = true;
 const logsDir = path.join(__dirname, "logs");
 const liveLogFile = path.join(logsDir, "live-signals.jsonl");
@@ -172,9 +173,10 @@ async function tick() {
 
   try {
     // Fresh candles fetch karo
-    [candles5m_cache, candles15m_cache] = await Promise.all([
+    [candles5m_cache, candles15m_cache, candles1h_cache] = await Promise.all([
       fetchKlines(SYMBOL, "5m",  1000),
       fetchKlines(SYMBOL, "15m", 500),
+      fetchKlines(SYMBOL, "1h",  200),
     ]);
 
     const close = candles5m_cache[candles5m_cache.length - 1].close;
@@ -216,7 +218,11 @@ async function tick() {
     }
 
     // Signal check karo
-    const sig = strategy(candles5m_cache, candles15m_cache);
+    const sig = strategy(candles5m_cache, candles15m_cache, candles1h_cache);
+    // Log current indicators
+    const _c15=candles15m_cache.map(c=>c.close);
+    const _last=candles15m_cache[candles15m_cache.length-1];
+    console.log(`📊 Price:${_last.close} | checking strategy...`);
 
     if (!sig) {
       console.log("⏳ Koi signal nahi mila is bar.");

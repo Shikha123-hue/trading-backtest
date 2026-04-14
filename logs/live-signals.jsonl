@@ -1,0 +1,15 @@
+{"source":"live","event":"signal","symbol":"BTCUSDT","side":"buy","time":1776108300000,"price":72675.7,"atr":130.42485432092613}
+{"source":"live","event":"open","symbol":"BTCUSDT","side":"buy","time":1776108300000,"entryPrice":0}
+{"source":"live","event":"close","symbol":"BTCUSDT","side":"buy","entryTime":1776108300000,"exitTime":1776108600000,"entryPrice":0,"exitPrice":72826.9,"pnl":728.269}
+{"source":"live","event":"signal","symbol":"BTCUSDT","side":"buy","time":1776119100000,"price":73656.3,"atr":148.07895322630404}
+{"source":"live","event":"open","symbol":"BTCUSDT","side":"buy","time":1776119100000,"entryPrice":0}
+{"source":"live","event":"close","symbol":"BTCUSDT","side":"buy","entryTime":1776119100000,"exitTime":1776119400000,"entryPrice":0,"exitPrice":74153.8,"pnl":741.538}
+{"source":"live","event":"signal","symbol":"BTCUSDT","side":"buy","time":1776150600000,"price":74650.7,"atr":60.42795258383262}
+{"source":"live","event":"open","symbol":"BTCUSDT","side":"buy","time":1776150600000,"entryPrice":0}
+{"source":"live","event":"close","symbol":"BTCUSDT","side":"buy","entryTime":1776150600000,"exitTime":1776150900000,"entryPrice":0,"exitPrice":74736.5,"pnl":747.365}
+{"source":"live","event":"signal","symbol":"BTCUSDT","side":"buy","time":1776154200000,"price":74523.8,"atr":62.799202335856116}
+{"source":"live","event":"open","symbol":"BTCUSDT","side":"buy","time":1776154200000,"entryPrice":0}
+{"source":"live","event":"close","symbol":"BTCUSDT","side":"buy","entryTime":1776154200000,"exitTime":1776154500000,"entryPrice":0,"exitPrice":74518.8,"pnl":745.188}
+{"source":"live","event":"signal","symbol":"BTCUSDT","side":"buy","time":1776156000000,"price":74745.6,"atr":67.60031950921109}
+{"source":"live","event":"open","symbol":"BTCUSDT","side":"buy","time":1776156000000,"entryPrice":0}
+{"source":"live","event":"close","symbol":"BTCUSDT","side":"buy","entryTime":1776156000000,"exitTime":1776156300000,"entryPrice":0,"exitPrice":74684.2,"pnl":746.842}
