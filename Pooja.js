@@ -205,7 +205,7 @@ async function runBacktest() {
         const curTime=t15[i];
         let stDir1h=null;
         for (let j=t1h.length-1;j>=0;j--) {
-            if (t1h[j] <=curTime) { stDir1h=dir1h[j]; break; }
+            if (t1h[j]+ 3600000 <=curTime) { stDir1h=dir1h[j]; break; }
         }
         mtf1hMap.set(curTime,stDir1h);
     }
@@ -217,7 +217,7 @@ async function runBacktest() {
     const longLog=[], shortLog=[];
 
     // Effective lot = LOT_SIZE * LEVERAGE
-    const EFFECTIVE_LOT = LOT_SIZE * LEVERAGE; // 0.01 × 20 = 0.2 BTC
+    const EFFECTIVE_LOT = LOT_SIZE * LEVERAGE; // 0.01 × 10 = 0.1 BTC
 
     let balance=500, position=null, entryPrice=0;
     const tsm=new TrailingStopManager();

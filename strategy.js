@@ -1,388 +1,263 @@
 "use strict";
-
 /**
- * strategy.js — Pine Script 100% Exact Match
+ * strategy.js — Pooja.js ke saath 100% match
  *
- * ═══════════════════════════════════════════════
- *  Pine → JS Exact Mapping
- * ═══════════════════════════════════════════════
- *
- *  FIX 1: ta.rma() → Wilder's smoothing (alpha = 1/period)
- *          All Pine indicators use RMA internally:
- *          ta.atr, ta.rsi, ta.dmi, ta.supertrend
- *
- *  FIX 2: ta.supertrend() → Per-bar RMA ATR + Pine exact band logic
- *          Pine pseudocode:
- *          upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand
- *                     ? upperBand : prevUpperBand
- *          lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand
- *                     ? lowerBand : prevLowerBand
- *          trend := na(atr[1]) ? 1
- *                 : trend[1]==-1 and close > upperBand ? 1
- *                 : trend[1]==1  and close < lowerBand ? -1
- *                 : trend[1]
- *          [superTrend = trend==1 ? lowerBand : upperBand, direction=-trend]
- *
- *  FIX 3: ta.vwap() → Daily UTC session reset
- *
- *  FIX 4: f_safe_mtf("15", st_dir) → uses _src[1] (previous bar)
- *
- *  FIX 5: ta.ema(close, 200) → needs 600+ warmup bars to converge
- *          (backtest uses 600 warmup candles, not 250)
- *
- *  FIX 6: ta.dmi() → RMA-based smoothing (Wilder's exact)
- *          Pine pseudocode:
- *          smoothedTR  = ta.rma(tr, diLength)
- *          smoothedPDM = ta.rma(plusDM, diLength)
- *          smoothedMDM = ta.rma(minusDM, diLength)
- *          plus  = smoothedPDM / smoothedTR * 100
- *          minus = smoothedMDM / smoothedTR * 100
- *          dx    = abs(plus-minus) / (plus+minus) * 100
- *          adx   = ta.rma(dx, adxSmoothing)
- * ═══════════════════════════════════════════════
+ * ✅ Primary TF  : 15m (5m HATA DIYA)
+ * ✅ MTF         : 1h fully closed bars only (anti-repaint)
+ * ✅ Indicators  : EMA200, RSI14, ADX14, ATR14, VWAP, SuperTrend(4,12)
+ * ✅ Signal      : Exact same as Pooja.js
+ * ✅ TSM         : ATR×1.5 SL, trail after 2pt, offset 0.5
  */
 
-// ─── Pine: ta.rma(src, length) — Wilder's Moving Average ──────────────
-// alpha = 1/length (NOT 2/(length+1) like EMA)
-// seed  = ta.sma(src, length) on first valid bar
-function calcRMA(data, period) {
-  if (data.length < period) return null;
-  // Seed with SMA (Pine: first value = sma)
-  let rma = 0;
-  for (let i = 0; i < period; i++) rma += data[i];
-  rma /= period;
-  // Wilder's smoothing: alpha = 1/period
-  const alpha = 1 / period;
-  for (let i = period; i < data.length; i++) {
-    rma = alpha * data[i] + (1 - alpha) * rma;
-  }
-  return rma;
-}
-
-// Per-bar RMA — returns array of RMA values (needed for Supertrend)
+// ─── RMA (Wilder's) Array ─────────────────────────────────
 function calcRMAArray(data, period) {
   const result = new Array(data.length).fill(null);
   if (data.length < period) return result;
-  // Seed
   let sum = 0;
   for (let i = 0; i < period; i++) sum += data[i];
   result[period - 1] = sum / period;
-  // Wilder's
   const alpha = 1 / period;
-  for (let i = period; i < data.length; i++) {
+  for (let i = period; i < data.length; i++)
     result[i] = alpha * data[i] + (1 - alpha) * result[i - 1];
+  return result;
+}
+
+// ─── EMA Array ────────────────────────────────────────────
+function calcEMAArray(data, period) {
+  const result = new Array(data.length).fill(null);
+  if (data.length < period) return result;
+  const alpha = 2 / (period + 1);
+  let ema = 0;
+  for (let i = 0; i < period; i++) ema += data[i];
+  ema /= period; result[period - 1] = ema;
+  for (let i = period; i < data.length; i++) {
+    ema = alpha * data[i] + (1 - alpha) * ema;
+    result[i] = ema;
   }
   return result;
 }
 
-// ─── Pine: ta.ema(src, length) ─────────────────────────────────────────
-// alpha = 2/(length+1), seed = sma
-function calcEMA(data, period) {
-  if (data.length < period) return null;
-  const alpha = 2 / (period + 1);
-  let ema = 0;
-  for (let i = 0; i < period; i++) ema += data[i];
-  ema /= period;
-  for (let i = period; i < data.length; i++) {
-    ema = alpha * data[i] + (1 - alpha) * ema;
+// ─── SMA Array ────────────────────────────────────────────
+function calcSMAArray(data, period) {
+  const result = new Array(data.length).fill(null);
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j];
+    result[i] = sum / period;
   }
-  return ema;
+  return result;
 }
 
-// ─── Pine: ta.sma(src, length) ─────────────────────────────────────────
-function calcSMA(data, period) {
-  if (data.length < period) return null;
-  return data.slice(-period).reduce((a, b) => a + b, 0) / period;
+// ─── ATR Array ────────────────────────────────────────────
+function calcATRArray(highs, lows, closes, period) {
+  const trs = new Array(highs.length).fill(null);
+  for (let i = 1; i < highs.length; i++)
+    trs[i] = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i]  - closes[i - 1])
+    );
+  const result = new Array(highs.length).fill(null);
+  let seed = 0;
+  for (let i = 1; i <= period; i++) seed += trs[i];
+  result[period] = seed / period;
+  const alpha = 1 / period;
+  for (let i = period + 1; i < highs.length; i++)
+    result[i] = alpha * trs[i] + (1 - alpha) * result[i - 1];
+  return result;
 }
 
-// ─── Pine: ta.atr(length) = ta.rma(ta.tr(true), length) ───────────────
-function calcATR(candles, period) {
-  if (candles.length < period + 1) return null;
-  const trs = [];
-  for (let i = 1; i < candles.length; i++) {
-    const h = candles[i].high, l = candles[i].low, pc = candles[i-1].close;
-    // Pine: ta.tr(true) = max(high-low, abs(high-close[1]), abs(low-close[1]))
-    trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
-  }
-  return calcRMA(trs, period);
-}
-
-// ─── Pine: ta.rsi(src, length) ─────────────────────────────────────────
-// Uses Wilder's RMA for gain/loss smoothing
-function calcRSI(closes, period) {
-  if (closes.length < period + 1) return null;
+// ─── RSI Array ────────────────────────────────────────────
+function calcRSIArray(closes, period) {
+  const result = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return result;
   const gains = [], losses = [];
   for (let i = 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i-1];
+    const d = closes[i] - closes[i - 1];
     gains.push(Math.max(d, 0));
     losses.push(Math.max(-d, 0));
   }
-  const ag = calcRMA(gains, period);
-  const al = calcRMA(losses, period);
-  if (ag === null || al === null) return null;
-  if (al === 0) return 100;
-  return 100 - 100 / (1 + ag / al);
-}
-
-// ─── Pine: ta.vwap(close) — Daily UTC session reset ────────────────────
-// Pine resets VWAP at the start of each new calendar day (UTC)
-function calcVWAP(candles) {
-  if (!candles.length) return null;
-  const lastTime = candles[candles.length - 1].time;
-  const d = new Date(lastTime);
-  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const session  = candles.filter(c => c.time >= dayStart);
-  const src      = session.length > 0 ? session : candles;
-  let tv = 0, v = 0;
-  for (const c of src) {
-    const tp = (c.high + c.low + c.close) / 3;
-    tv += tp * c.volume;
-    v  += c.volume;
+  const alpha = 1 / period;
+  let ag = 0, al = 0;
+  for (let i = 0; i < period; i++) { ag += gains[i]; al += losses[i]; }
+  ag /= period; al /= period;
+  result[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  for (let i = period; i < gains.length; i++) {
+    ag = alpha * gains[i] + (1 - alpha) * ag;
+    al = alpha * losses[i] + (1 - alpha) * al;
+    result[i + 1] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
   }
-  return v === 0 ? null : tv / v;
+  return result;
 }
 
-// ─── Pine: ta.dmi(diLength, adxSmoothing) ─────────────────────────────
-// Returns ADX only (strategy uses only adx_val)
-// Pine exact: uses RMA throughout
-function calcDMI(candles, period) {
-  if (candles.length < period * 2 + 1) return { adx: null };
-
+// ─── ADX Array ────────────────────────────────────────────
+function calcADXArray(highs, lows, closes, period) {
   const trs = [], pdms = [], mdms = [];
-  for (let i = 1; i < candles.length; i++) {
-    const h = candles[i].high,     l = candles[i].low;
-    const ph = candles[i-1].high, pl = candles[i-1].low, pc = candles[i-1].close;
+  for (let i = 1; i < highs.length; i++) {
+    const h = highs[i], l = lows[i], ph = highs[i-1], pl = lows[i-1], pc = closes[i-1];
     trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
     const up = h - ph, dn = pl - l;
     pdms.push(up > dn && up > 0 ? up : 0);
     mdms.push(dn > up && dn > 0 ? dn : 0);
   }
-
-  // Pine: smoothedTR, smoothedPDM, smoothedMDM via ta.rma
   const strArr  = calcRMAArray(trs,  period);
   const spdmArr = calcRMAArray(pdms, period);
   const smdmArr = calcRMAArray(mdms, period);
-
-  // Compute DX per bar
-  const dxArr = [];
+  const dxArr   = new Array(trs.length).fill(null);
   for (let i = 0; i < strArr.length; i++) {
-    if (strArr[i] === null || strArr[i] === 0) { dxArr.push(null); continue; }
+    if (!strArr[i] || strArr[i] === 0) continue;
     const pdi = spdmArr[i] / strArr[i] * 100;
     const mdi = smdmArr[i] / strArr[i] * 100;
     const sum = pdi + mdi;
-    dxArr.push(sum === 0 ? 0 : Math.abs(pdi - mdi) / sum * 100);
+    dxArr[i]  = sum === 0 ? 0 : Math.abs(pdi - mdi) / sum * 100;
   }
-
-  // Pine: adx = ta.rma(dx, adxSmoothing)
-  const validDX = dxArr.filter(v => v !== null);
-  const adx = calcRMA(validDX, period);
-  return { adx };
+  const adxRaw = calcRMAArray(dxArr.map(v => v === null ? 0 : v), period);
+  const adxArr = new Array(highs.length).fill(null);
+  for (let i = 0; i < adxRaw.length; i++) adxArr[i + 1] = adxRaw[i];
+  return adxArr;
 }
 
-// Two-call version for adx_val and adx_val[1]
-function calcDMI_prev(candles, period) {
-  return calcDMI(candles.slice(0, -1), period);
-}
-
-// ─── Pine: ta.supertrend(factor, atrPeriod) ────────────────────────────
-// Pine EXACT pseudocode:
-//
-//   src = hl2
-//   atr = ta.atr(atrPeriod)                    ← RMA-based
-//   upperBand = src + factor * atr
-//   lowerBand = src - factor * atr
-//   prevLowerBand = nz(lowerBand[1])            ← 0 on first bar
-//   prevUpperBand = nz(upperBand[1])            ← 0 on first bar
-//
-//   lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand
-//              ? lowerBand : prevLowerBand
-//   upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand
-//              ? upperBand : prevUpperBand
-//
-//   int trend = na
-//   trend := na(atr[1])           ? 1           ← first valid bar
-//          : trend[1]==-1 and close > upperBand ? 1
-//          : trend[1]==1  and close < lowerBand ? -1
-//          : trend[1]
-//
-//   superTrend = trend==1 ? lowerBand : upperBand
-//
-//   Returns [superTrend, direction]
-//   direction = 1 when trend=1 (lowerBand, bullish, ST < close)
-//             = -1 when trend=-1 (upperBand, bearish, ST > close)
-//   BUT Pine docs + usage: direction < 0 = uptrend → returns -trend!
-//   So returned direction = -trend:
-//     trend=1 (lowerBand, bullish) → direction = -1 ← matches buy_signal check
-//     trend=-1(upperBand, bearish) → direction = +1
-//
-function calcSuperTrend(candles, factor, atrPeriod) {
-  if (candles.length < atrPeriod + 2) return { value: null, direction: null };
-
-  // Step 1: Compute per-bar TR
-  const trs = new Array(candles.length).fill(null);
-  for (let i = 1; i < candles.length; i++) {
-    const h = candles[i].high, l = candles[i].low, pc = candles[i-1].close;
-    trs[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
-  }
-
-  // Step 2: Per-bar RMA of TR = per-bar ATR
-  // Seed at bar atrPeriod using SMA of trs[1..atrPeriod]
-  const atrArr = new Array(candles.length).fill(null);
-  if (candles.length > atrPeriod) {
-    let seed = 0;
-    for (let i = 1; i <= atrPeriod; i++) seed += trs[i];
-    atrArr[atrPeriod] = seed / atrPeriod;
-    const alpha = 1 / atrPeriod;
-    for (let i = atrPeriod + 1; i < candles.length; i++) {
-      atrArr[i] = alpha * trs[i] + (1 - alpha) * atrArr[i - 1];
-    }
-  }
-
-  // Step 3: Supertrend per-bar computation (Pine exact)
-  let prevUpperBand = 0; // nz(...) = 0 on first bar
-  let prevLowerBand = 0;
-  let prevClose     = 0;
-  let trend         = null; // na initially
-  let superTrend    = null;
-
-  for (let i = 1; i < candles.length; i++) {
+// ─── SuperTrend Array ─────────────────────────────────────
+function calcSuperTrendArray(highs, lows, closes, factor, atrPeriod) {
+  const atrArr = calcATRArray(highs, lows, closes, atrPeriod);
+  const dirArr = new Array(closes.length).fill(null);
+  let prevUpper = 0, prevLower = 0, prevClose = 0, trend = null;
+  for (let i = 1; i < closes.length; i++) {
     const atr = atrArr[i];
-    if (atr === null) {
-      prevClose = candles[i].close;
-      continue;
-    }
-
-    const hl2  = (candles[i].high + candles[i].low) / 2;
-    let upperBand = hl2 + factor * atr;
-    let lowerBand = hl2 - factor * atr;
-
-    // Pine: lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand
-    //                  ? lowerBand : prevLowerBand
-    lowerBand = lowerBand > prevLowerBand || prevClose < prevLowerBand
-      ? lowerBand : prevLowerBand;
-
-    // Pine: upperBand := upperBand < prevUpperBand or close[1] > prevUpperBand
-    //                  ? upperBand : prevUpperBand
-    upperBand = upperBand < prevUpperBand || prevClose > prevUpperBand
-      ? upperBand : prevUpperBand;
-
-    // Pine: trend := na(atr[1]) ? 1 : ...
-    const prevATR = atrArr[i - 1];
-    if (prevATR === null) {
-      // na(atr[1]) → trend = 1 (bullish default)
-      trend = 1;
-    } else if (trend === -1 && candles[i].close > upperBand) {
-      trend = 1;
-    } else if (trend === 1 && candles[i].close < lowerBand) {
-      trend = -1;
-    }
-    // else trend stays same (nz(trend[1], 1) if trend was null → 1)
+    if (atr === null) { prevClose = closes[i]; continue; }
+    const hl2   = (highs[i] + lows[i]) / 2;
+    let upper   = hl2 + factor * atr;
+    let lower   = hl2 - factor * atr;
+    lower = lower > prevLower || prevClose < prevLower ? lower : prevLower;
+    upper = upper < prevUpper || prevClose > prevUpper ? upper : prevUpper;
+    if (atrArr[i - 1] === null)              trend = 1;
+    else if (trend === -1 && closes[i] > upper) trend = 1;
+    else if (trend ===  1 && closes[i] < lower) trend = -1;
     if (trend === null) trend = 1;
-
-    superTrend    = trend === 1 ? lowerBand : upperBand;
-    prevUpperBand = upperBand;
-    prevLowerBand = lowerBand;
-    prevClose     = candles[i].close;
+    dirArr[i]  = -trend;
+    prevUpper  = upper;
+    prevLower  = lower;
+    prevClose  = closes[i];
   }
-
-  // Pine convention: direction < 0 = uptrend (bullish)
-  // trend=1 (lowerBand, bullish) → direction = -1
-  // trend=-1(upperBand, bearish) → direction = +1
-  const direction = trend === null ? null : -trend;
-  return { value: superTrend, direction };
+  return dirArr;
 }
 
-// ═══════════════════════════════════════════════
-//  MAIN STRATEGY — Pine Script Line-by-Line
-// ═══════════════════════════════════════════════
-function strategy(candles5m, candles15m, candles1h) {
-  // Need 600+ bars for EMA(200) to fully converge
-  if (candles5m.length  < 600) return null;
-  if (candles15m.length < 50)  return null;
+// ─── VWAP Array (daily UTC reset) ────────────────────────
+// candles = array of { time, high, low, close, volume }
+function calcVWAPArray(candles) {
+  const vwap = new Array(candles.length).fill(null);
+  let tv = 0, v = 0, lastDate = null;
+  for (let i = 0; i < candles.length; i++) {
+    const d = new Date(candles[i].time).getUTCDate();
+    if (lastDate !== null && d !== lastDate) { tv = 0; v = 0; }
+    const tp = (candles[i].high + candles[i].low + candles[i].close) / 3;
+    tv += tp * candles[i].volume;
+    v  += candles[i].volume;
+    vwap[i] = v === 0 ? null : tv / v;
+    lastDate = d;
+  }
+  return vwap;
+}
 
-  const closes  = candles5m.map(c => c.close);
-  const vols    = candles5m.map(c => c.volume);
-  const close   = closes[closes.length - 1];
+// ══════════════════════════════════════════════
+//  MAIN STRATEGY  — Pooja.js exact match
+//  Input: candles15m, candles1h  (objects with time/high/low/close/volume)
+//         Both arrays = only CLOSED bars (last bar already sliced off)
+// ══════════════════════════════════════════════
+function strategy(candles15m, candles1h) {
+  // Need enough bars for indicators to warm up
+  if (candles15m.length < 300) return null;
+  if (candles1h.length  <  50) return null;
 
-  // Pine: [st_val, st_dir] = ta.supertrend(4, 12)
-  const { direction: st_dir } = calcSuperTrend(candles5m, 4, 12);
+  // ── Extract arrays ──────────────────────────
+  const h15 = candles15m.map(d => d.high);
+  const l15 = candles15m.map(d => d.low);
+  const c15 = candles15m.map(d => d.close);
+  const v15 = candles15m.map(d => d.volume);
+  const t15 = candles15m.map(d => d.time);
 
-  // Pine: vwap_val = ta.vwap(close)  ← daily session reset
-  const vwap_val = calcVWAP(candles5m);
+  const h1h = candles1h.map(d => d.high);
+  const l1h = candles1h.map(d => d.low);
+  const c1h = candles1h.map(d => d.close);
+  const t1h = candles1h.map(d => d.time);
 
-  // Pine: rsi_val = ta.rsi(close, 14)
-  const closes15m = candles15m.map(c => c.close);
-  const rsi_val = calcRSI(closes15m, 14);
+  // ── Compute indicators (same as Pooja.js) ───
+  const ema200 = calcEMAArray(c15, 200);
+  const rsi    = calcRSIArray(c15, 14);
+  const adx    = calcADXArray(h15, l15, c15, 14);
+  const atr    = calcATRArray(h15, l15, c15, 14);
+  const volSma = calcSMAArray(v15, 20);
+  const vwap   = calcVWAPArray(candles15m);
+  const dir15  = calcSuperTrendArray(h15, l15, c15, 4, 12);
+  const dir1h  = calcSuperTrendArray(h1h, l1h, c1h, 4, 12);
 
-  // Pine: [p, m, adx_val] = ta.dmi(14, 14)
-  const { adx: adx_val  } = calcDMI(candles15m, 14);
-  // Pine: adx_val[1]  →  previous bar DMI
-  const { adx: adx_prev } = calcDMI_prev(candles15m, 14);
+  // ── Anti-repaint MTF map (same as Pooja.js) ─
+  // Only use 1h bars that are FULLY closed before current 15m bar
+  const mtf1hMap = new Map();
+  for (let i = 0; i < t15.length; i++) {
+    const curTime = t15[i];
+    let stDir1h = null;
+    for (let j = t1h.length - 1; j >= 0; j--) {
+      if (t1h[j] + 3600000 <= curTime) { stDir1h = dir1h[j]; break; }
+    }
+    mtf1hMap.set(curTime, stDir1h);
+  }
 
-  // Pine: ema_200 = ta.ema(close, 200)
-  const ema_200 = calcEMA(closes, 200);
+  // ── Last closed bar ──────────────────────────
+  const i = candles15m.length - 1;
 
-  // Pine: atr = ta.atr(14)
-  const atr = calcATR(candles5m, 14);
+  const price   = c15[i];
+  const curTime = t15[i];
+  const curEma  = ema200[i];
+  const curRsi  = rsi[i];
+  const curAdx  = adx[i];
+  const prevAdx = adx[i - 1];
+  const curAtr  = atr[i];
+  const curVSma = volSma[i];
+  const curVwap = vwap[i];
+  const stDir15 = dir15[i];
+  const stDir1h = mtf1hMap.get(curTime);
 
-  // Pine: st_1h_dir = f_safe_mtf("15", st_dir)
-  // f_safe_mtf uses _src[1] → previous 15m bar's direction
-  const { direction: st_1h_dir } = calcSuperTrend(
-    candles1h.slice(0, -1), 4, 12
-  );
+  // ── Validate all indicators ready ───────────
+  if (!curEma || !curRsi || !curAdx || !prevAdx || !curAtr ||
+      !curVSma || !curVwap || stDir15 === null ||
+      stDir1h === null || stDir1h === undefined) return null;
 
-  // Pine: adx_rising = adx_val > 25 and adx_val > adx_val[1]
-  const adx_rising = adx_val  !== null &&
-                     adx_prev !== null &&
-                     adx_val > 25 &&
-                     adx_val > adx_prev;
+  // ── Signal conditions (exact Pooja.js copy) ─
+  const buySignal =
+    stDir15 === -1 && stDir1h === -1 &&
+    price > curVwap && price > curEma &&
+    curRsi > 58 && curRsi < 72 &&
+    curAdx > 32 && curAdx > prevAdx &&
+    v15[i] > curVSma * 1.2;
 
-  // Pine: high_vol = volume > ta.sma(volume, 20) * 1.2
-  const vols15m = candles15m.map(c => c.volume);
-  const vol_sma  = calcSMA(vols15m, 20);
-  const curVol   = candles15m[candles15m.length - 1].volume;
-  const high_vol = vol_sma !== null && curVol > vol_sma * 1.2;
+  const sellSignal =
+    stDir15 === 1 && stDir1h === 1 &&
+    price < curVwap && price < curEma &&
+    curRsi > 28 && curRsi < 42 &&
+    curAdx > 32 && curAdx > prevAdx &&
+    v15[i] > curVSma * 1.2;
 
-  if (!atr || !rsi_val || !ema_200 || !vwap_val ||
-      st_dir === null || st_1h_dir === null) return null;
-
-  // Pine: buy_signal
-  const buy_signal =
-    st_dir       === -1 &&   // close > st_val  (direction=-1 = bullish)
-    st_1h_dir === -1 &&   // st_1h_dir < 0
-    close > vwap_val    &&
-    close > ema_200     &&
-    rsi_val > 58        &&
-    rsi_val < 72        &&
-    adx_rising          &&
-    high_vol;
-
-  // Pine: sell_signal
-  const sell_signal =
-    st_dir       === 1  &&   // close < st_val  (direction=1 = bearish)
-    st_1h_dir === 1  &&   // st_1h_dir > 0
-    close < vwap_val    &&
-    close < ema_200     &&
-    rsi_val > 28        &&
-    rsi_val < 42        &&
-    adx_rising          &&
-    high_vol;
-
-  if (!buy_signal && !sell_signal) return null;
+  if (!buySignal && !sellSignal) return null;
 
   return {
-    buy_signal,
-    sell_signal,
-    atr,
-    sl_mult:      1.5,   // Pine: loss = (atr * 1.5) / mintick
-    trail_points: 2.0,   // Pine: trail_points = 2.0 / mintick
-    trail_offset: 0.5,   // Pine: trail_offset = 0.5 / mintick
+    buy_signal:  buySignal,
+    sell_signal: sellSignal,
+    price,
+    atr:    curAtr,
+    rsi:    curRsi,
+    adx:    curAdx,
+    vwap:   curVwap,
+    ema200: curEma,
   };
 }
 
-// ═══════════════════════════════════════════════
-//  TRAILING STOP — Pine strategy.exit exact
-// ═══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  TRAILING STOP — Pooja.js exact match
+//  SL  = entry ± ATR × 1.5
+//  Trail activates after 2pt move
+//  Trail offset = 0.5pt
+// ══════════════════════════════════════════════
 class TrailingStopManager {
   constructor() { this.reset(); }
 
@@ -392,50 +267,47 @@ class TrailingStopManager {
     this.entryPrice  = 0;
     this.currentSL   = 0;
     this.trailActive = false;
-    this.trailPoints = 0;
-    this.trailOffset = 0;
     this.peakPrice   = 0;
   }
 
-  open(side, entryPrice, atr, trailPoints, trailOffset, slMult) {
+  // atr only — same 3-param signature as Pooja.js
+  open(side, entryPrice, atr) {
     this.reset();
-    this.active      = true;
-    this.side        = side;
-    this.entryPrice  = entryPrice;
-    this.trailPoints = trailPoints;   // $2.0 fixed (Pine exact)
-    this.trailOffset = trailOffset;   // $0.5 fixed (Pine exact)
-    this.peakPrice   = entryPrice;
-    this.currentSL   = side === "buy"
-      ? entryPrice - atr * slMult    // Pine: loss = atr * 1.5 / mintick
-      : entryPrice + atr * slMult;
+    this.active     = true;
+    this.side       = side;
+    this.entryPrice = entryPrice;
+    this.peakPrice  = entryPrice;
+    this.currentSL  = side === 'long'
+      ? entryPrice - atr * 1.5
+      : entryPrice + atr * 1.5;
   }
 
-  updateOHLC(high, low) {
-    if (!this.active) return { stopped: false, currentSL: this.currentSL, trailActive: false };
-    const isBuy = this.side === "buy";
+  update(high, low) {
+    if (!this.active) return { stopped: false };
+    const isBuy = this.side === 'long';
 
-    // Track peak (best price reached)
-    if (isBuy  && high > this.peakPrice) this.peakPrice = high;
+    if  (isBuy && high > this.peakPrice) this.peakPrice = high;
     if (!isBuy && low  < this.peakPrice) this.peakPrice = low;
 
-    // Pine: trail activates after trail_points move
     const move = isBuy
       ? this.peakPrice - this.entryPrice
       : this.entryPrice - this.peakPrice;
-    if (move >= this.trailPoints) this.trailActive = true;
 
-    // Update trailing SL
+    if (move >= 2.0) this.trailActive = true;
+
     if (this.trailActive) {
       const newSL = isBuy
-        ? this.peakPrice - this.trailOffset
-        : this.peakPrice + this.trailOffset;
-      if (isBuy  && newSL > this.currentSL) this.currentSL = newSL;
+        ? this.peakPrice - 0.5
+        : this.peakPrice + 0.5;
+      if  (isBuy && newSL > this.currentSL) this.currentSL = newSL;
       if (!isBuy && newSL < this.currentSL) this.currentSL = newSL;
     }
 
-    // Check if stopped
-    const stopped = isBuy ? low <= this.currentSL : high >= this.currentSL;
-    return { stopped, currentSL: this.currentSL, trailActive: this.trailActive };
+    const stopped = isBuy
+      ? low  <= this.currentSL
+      : high >= this.currentSL;
+
+    return { stopped, exitPrice: this.currentSL };
   }
 
   close() { this.reset(); }

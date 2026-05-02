@@ -13,8 +13,8 @@ const ccxt   = require('ccxt');
 // ══════════════════════════════════════════
 //  🔑 APNI TESTNET KEYS YAHAN DALO
 // ══════════════════════════════════════════
-const API_KEY    = 't60JxHasKcLXv82wovamnZLlXF3reqUFLbHVzAgMalLtK0lHHScPSXnuHOJ4zklU';
-const API_SECRET = 'A6GtQSsOEtm2JyneWLA3QEHDHRycihOYwdufUhiuXxXkKOf1XdiRwxxprt8hg5lB';
+const API_KEY    = 'fMiGrtMxTLMndKFEIWlGkKKTnE12A72Bba4E8vju7KCGqyhewlTFSkPnrSV6akfX';
+const API_SECRET = '6DLUdHQGfazk4X2K52PLZZzn5eDSIarGYcoZEpPRCMHNFoEcz3LRjixGDIKQmXk4';
 // ══════════════════════════════════════════
 
 const LOT_SIZE = 0.001;  // $100 ke liye 0.001 BTC (~$67-95)
